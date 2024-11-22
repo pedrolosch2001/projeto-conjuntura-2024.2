@@ -1,0 +1,158 @@
+---
+title: "projeto-macro"
+output: html_document
+date: "2024-11-22"
+---
+
+```{r setup, include=FALSE}
+#library(flexdashboard)
+library(ggplot2)
+library(plotly)
+library(DT)
+library(rbcb)
+library(tidyverse)
+library(scales)
+library(patchwork)
+library(rvest)
+library(sidrar)
+```
+
+``` {r}
+# Funcao para criar graficos
+criar_graficos_series = function(series_data) {
+
+  plots_list = list()
+
+  for (series_name in names(series_data)) {
+    # Obter os dados da série atual
+    series <- series_data[[series_name]]
+  
+    # Verificar se os dados existem
+    if (!is.null(series)) {
+    
+      # Criar o gráfico e armazenar na lista
+    
+      plots_list[[series_name]] <- ggplot(series, aes(x = date, y = .data[[names(series_data[[series_name]][2])]])) +
+        geom_line() +
+        labs(title = "", x = "", y = "") +
+        scale_y_continuous(breaks = pretty_breaks(n = 8)) +
+        geom_smooth(method = "loess", color = "blue", se = TRUE, span = 0.5) +
+        theme_minimal()
+    } else {
+      message(paste("Série", series_name, "não disponível."))
+    }
+  }
+  
+  return(plots_list)
+}
+```
+
+``` {r}
+# Funcao para puxar series do rbcb sem abortar caso alguma nao esteja disponivel
+get_safe_series = function(series_id, start_date, end_date) {
+  tryCatch(
+    get_series(series_id, start_date = start_date, end_date = end_date),
+    error = function(e) {
+      message(paste("Erro ao obter série", series_id, "- Ignorando..."))
+      NULL
+    }
+  )
+}
+```
+
+``` {r}
+get_safe_series_sidra = function(series_ids_sidra, start_date_sidra, end_date_sidra) {
+  tryCatch(
+    get_sidra(series_ids_sidra,
+              period = paste0(start_date_sidra, "-", end_date_sidra),
+              columns = c("Mês", "Valor")),
+    error = function(e) {
+      message(paste("Erro ao obter série", series_ids_sidra, "- Ignorando..."))
+      NULL
+    }
+  )
+}
+```
+
+``` {r}
+# Funcao para criar serie usando rbcb
+cria_serie = function(series_ids, start_date) {
+  series_data = lapply(series_ids, get_safe_series, start_date = start_date, end_date = Sys.Date())
+  
+  return(series_data)
+}
+```
+
+``` {r}
+# Função para criar series usando sidrar
+cria_serie_sidra <- function(series_ids_sidra, start_date) {
+  series_data_sidra <- lapply(series_ids_sidra, get_safe_series_sidra, start_date = start_date_sidra, end_date = end_date_sidra)
+  
+  return(series_data_sidra)
+}
+```
+
+------------------------------------------------------------------------
+
+``` {r}
+# series
+
+series_ids = c(
+  ipca_geral = 433,
+  ipca_precos_livres = 1635, 
+  ipca_precos_monitorados = 1636,
+  ipca_livres_alimentacao_domicilio = 1637,
+  ipca_livres_industriais = 1638,
+  ipca_livres_servicos = 1639,
+  ipca_nucleos_exclusao_0 = 4448,
+  ipca_nucleos_exclusao_3 = 4449,
+  selic = 432,
+  swap_di_pre = 1178,
+  exp_inflacao_12meses = 1451,
+  usd_brl = 3695,
+  inflacao_implicita = 4325,
+  selic_futura = 1174
+)
+
+start_date = "2004-01-01"
+
+series_data = cria_serie(series_ids, start_date)
+```
+
+``` {r}
+series_ids_sidra = c(
+  desemprego = 4099,
+  pib = 1846
+)
+
+start_date_sidra = "200401"
+end_date_sidra = format(Sys.Date(), "%Y%m")
+
+series_data_sidra = cria_serie_sidra(series_ids_sidra, start_date_sidra)
+```
+
+```{r}
+sidra = get_sidra()
+```
+
+``` {r}
+plots = criar_graficos_series(series_data)
+```
+
+``` {r message=FALSE}
+ggplotly(plots$selic_futura)
+
+```
+
+``` {r}
+url = "https://www.aneel.gov.br/bandeiras-tarifarias"
+
+bandeiras = url %>% 
+  read_html() %>% 
+  html_nodes("table") %>% 
+  html_table()
+
+head(bandeiras)
+```
+
+
