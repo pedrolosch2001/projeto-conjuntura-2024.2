@@ -1,0 +1,117 @@
+library(ggplot2)
+library(plotly)
+library(dplyr)
+library(rbcb)
+library(scales)
+
+# Função para criar gráficos de séries
+criar_graficos_series <- function(series_data) {
+  plots_list <- list()
+  
+  for (series_name in names(series_data)) {
+    series <- series_data[[series_name]]
+    
+    if (!is.null(series)) {
+      plots_list[[series_name]] <- ggplot(series, aes(x = date, y = value)) +
+        geom_line() +
+        labs(title = series_name, x = "Data", y = "Valor (%)") +
+        scale_y_continuous(breaks = pretty_breaks(n = 8)) +
+        geom_smooth(method = "loess", color = "blue", se = TRUE, span = 0.5) +
+        theme_minimal()
+    } else {
+      message(paste("Série", series_name, "não disponível."))
+    }
+  }
+  
+  return(plots_list)
+}
+
+# Função para buscar séries de forma segura
+get_safe_series <- function(series_id, start_date) {
+  tryCatch(
+    {
+      get_series(series_id, start_date = start_date, end_date = Sys.Date())
+    },
+    error = function(e) {
+      message(paste("Erro ao obter série", series_id, "- Ignorando..."))
+      NULL
+    }
+  )
+}
+
+# Função para calcular núcleos de inflação
+calcular_nucleos <- function(dados, metodo = "exclusao", params = NULL) {
+  if (metodo == "exclusao") {
+    # Núcleo por Exclusão: Remove itens especificados
+    excluir <- params$excluir
+    dados <- dados %>%
+      filter(!categoria %in% excluir)
+  } else if (metodo == "media_aparada") {
+    # Núcleo de Média Aparada: Remove extremos
+    corte <- params$corte
+    dados <- dados %>%
+      group_by(date) %>%
+      summarise(value = mean(
+        value[value > quantile(value, corte) & value < quantile(value, 1 - corte)]
+      ))
+  } else if (metodo == "ponderado_ajustado") {
+    # Núcleo Ponderado Ajustado: Ajusta pesos com base na volatilidade
+    dados <- dados %>%
+      group_by(categoria) %>%
+      mutate(desvio = sd(value)) %>%
+      ungroup() %>%
+      mutate(peso_ajustado = 1 / desvio) %>%
+      group_by(date) %>%
+      summarise(value = sum(value * peso_ajustado) / sum(peso_ajustado))
+  }
+  
+  return(dados)
+}
+
+# IDs das séries para núcleos (exemplo com IPCA)
+series_ids <- c(
+  ipca_geral = 433,
+  ipca_precos_livres = 1635,
+  ipca_precos_monitorados = 1636,
+  ipca_livres_alimentacao_domicilio = 1637,
+  ipca_livres_industriais = 1638,
+  ipca_livres_servicos = 1639
+)
+
+# Data inicial
+start_date <- "2004-01-01"
+
+# Buscar séries
+series_data <- lapply(series_ids, get_safe_series, start_date = start_date)
+
+# Criar data frame consolidado
+dados_ipca <- bind_rows(series_data, .id = "categoria")
+
+# Exemplos de cálculo de núcleos
+nucleo_exclusao <- calcular_nucleos(
+  dados_ipca,
+  metodo = "exclusao",
+  params = list(excluir = c("ipca_livres_alimentacao_domicilio", "ipca_precos_monitorados"))
+)
+
+nucleo_media_aparada <- calcular_nucleos(
+  dados_ipca,
+  metodo = "media_aparada",
+  params = list(corte = 0.1)
+)
+
+# Criar gráficos
+graficos_ipca <- criar_graficos_series(series_data)
+
+# Gráficos dos núcleos
+graficos_nucleos <- list(
+  exclusao = ggplot(nucleo_exclusao, aes(x = date, y = value)) +
+    geom_line(color = "blue") +
+    labs(title = "Núcleo por Exclusão", x = "Data", y = "Valor (%)") +
+    theme_minimal(),
+  
+  )
+
+# Exibir gráficos
+ggplotly(graficos_nucleos$exclusao)
+ggplotly(graficos_nucleos$media_aparada)
