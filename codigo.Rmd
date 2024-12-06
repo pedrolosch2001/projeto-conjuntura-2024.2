@@ -1,0 +1,142 @@
+---
+title: "projeto-macro"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+#library(flexdashboard)
+library(ggplot2)
+library(plotly)
+library(DT)
+library(rbcb)
+library(tidyverse)
+library(scales)
+library(patchwork)
+library(rvest)
+library(sidrar)
+library(tidyquant)
+library(rb3)
+```
+
+``` {r}
+# Funcao para criar graficos
+criar_graficos_series = function(series_data) {
+
+  plots_list = list()
+
+  for (series_name in names(series_data)) {
+    # Obter os dados da série atual
+    series <- series_data[[series_name]]
+  
+    # Verificar se os dados existem
+    if (!is.null(series)) {
+    
+      # Criar o gráfico e armazenar na lista
+    
+      plots_list[[series_name]] <- ggplot(series, aes(x = date, y = .data[[names(series_data[[series_name]][2])]])) +
+        geom_line() +
+        labs(title = "", x = "", y = "") +
+        scale_y_continuous(breaks = pretty_breaks(n = 8)) +
+        geom_smooth(method = "loess", color = "blue", se = TRUE, span = 0.5) +
+        theme_minimal()
+    } else {
+      message(paste("Série", series_name, "não disponível."))
+    }
+  }
+  
+  return(plots_list)
+}
+```
+
+``` {r}
+# Funcao para puxar series do rbcb sem abortar caso alguma nao esteja disponivel
+get_safe_series = function(series_id, start_date, end_date) {
+  tryCatch(
+    get_series(series_id, start_date = start_date, end_date = end_date),
+    error = function(e) {
+      message(paste("Erro ao obter série", series_id, "- Ignorando..."))
+      NULL
+    }
+  )
+}
+```
+
+``` {r}
+# Funcao para criar serie usando rbcb
+cria_serie = function(series_ids, start_date) {
+  series_data = lapply(series_ids, get_safe_series, start_date = start_date, end_date = Sys.Date())
+  
+  return(series_data)
+}
+```
+
+------------------------------------------------------------------------
+
+``` {r}
+# series
+
+# IPCA (V)
+# Focus (V)
+# Cambio (V)
+# PIM (X)
+# Desemprego (V)
+# Precos Commodities (X)
+# Clima (X)
+# Selic (V)
+# Resultados fiscais (V)
+# PIB (V)
+
+
+series_ids = c(
+  ipca_geral = 433,
+  ipca_nucleos_exclusao_0 = 11427,
+  ipca_nucleos_exclusao_3 = 27839,
+  consumo_energia_comercial = 1402,
+  selic = 432,
+  usd_brl = 3695,
+  pim = 21859,
+  desocupacao = 24369,
+  empregados_privado_publico = 24371,
+  PIB_mensal = 4380,
+  PIB_12_meses = 4382,
+  primario = 2143
+)
+
+start_date = "2018-01-01"
+
+series_data = cria_serie(series_ids, start_date)
+```
+
+``` {r}
+# puxando series do focus
+focus_ipca = get_annual_market_expectations("IPCA", horizon = 12, start_date = start_date) %>% 
+  select(date, reference_date, focus = median) %>% 
+  mutate(ano = year(date)) %>% 
+  filter(reference_date == ano + 1) %>% 
+  select(-c(ano, reference_date))
+
+series_data$focus = focus_ipca
+```
+
+``` {r}
+# puxando series do tidyquant
+
+commodities = (x = "ICB", from = start_date, to = Sys.Date()) %>% 
+  select(date, icb = adjusted)
+
+series_data$icb = commodities
+```
+
+``` {r}
+# puxando series sidra
+
+pim = get_sidra(8885, variable = "allxp", period = "last", geo = "Brazil")
+```
+
+``` {r}
+plots = criar_graficos_series(series_data)
+```
+
+``` {r message=FALSE}
+ggplotly(plots$ipca_geral)
+```
