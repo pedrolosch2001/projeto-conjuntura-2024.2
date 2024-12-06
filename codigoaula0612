@@ -81,10 +81,10 @@ cria_serie = function(series_ids, start_date) {
 # IPCA (V)
 # Focus (V)
 # Cambio (V)
-# PIM (X)
+# PIM (V)
 # Desemprego (V)
 # Precos Commodities (V)
-# Preco energia (X)
+# Preco energia (V)
 # Selic (V)
 # Resultados fiscais (V)
 # PIB (V)
@@ -97,6 +97,7 @@ series_ids = c(
   selic = 432,
   usd_brl = 3695,
   pim = 21859,
+  ociosidade = 1344,
   desocupacao = 24369,
   empregados_privado_publico = 24371,
   PIB_mensal = 4380,
